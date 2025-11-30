@@ -12,11 +12,12 @@ void main(){
   // test_virtual_memory();
   // test_printf_basic();
   // test_printf_edge_cases();
-  test_timer_interrupt();
+  // test_timer_interrupt();
   printf_color(GREEN,"COMMON ON!\n");
 
   printf("--------Dead Loop in the end of main.c---------\n");
   while(1){
     
   }
+  
 }

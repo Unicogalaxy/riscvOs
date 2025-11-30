@@ -7,14 +7,15 @@
 #include"../../include/defs.h"
 
 
+
 struct cpu cpus[NCPU];
 struct proc procs[NPROC];
 
 struct proc *initproc;
 
-struct spinlock waitlock;
+struct spinlock wait_lock;
 int nextpid = 1;
-struct spinlock pidlock;
+struct spinlock pid_lock;
 
 
 void forkret();
@@ -33,8 +34,8 @@ void proc_mapstacks(uint64 *kernel_pagetable){
 
 void proc_init(){
   struct proc *p;
-  init_lock(&waitlock, "waitlock");
-  init_lock(&pidlock,"pidlock");
+  init_lock(&wait_lock, "wait_lock");
+  init_lock(&pid_lock,"pid_lock");
   for(p = procs;p <= &procs[NPROC];p++){
     init_lock(&p->lock,"proclockx");
     p->state = UNUSED;
@@ -69,10 +70,10 @@ struct proc* myproc(){
 //  为进程分配pid
 //  由于要避免已经完结的进程pid的干扰，所以不复用pid
 int alloc_pid(){
-  acquire(&pidlock);
+  acquire(&pid_lock);
   int pid = nextpid;
   nextpid++;
-  release(&pidlock);
+  release(&pid_lock);
   return pid;
 }
 
@@ -263,7 +264,106 @@ forkret(){
   panic("forkret()");
 }
 
+void 
+reparent(struct proc *p){
+  struct proc *child_p;
+  for(child_p = procs;child_p < &procs[NPROC];child_p++){
+    if(child_p->parent == p){
+      child_p->parent = initproc;
+      //  需要唤醒initproc来处理僵尸进程,否则initproc下的zombie会堆积
+      wakeup(initproc);
+    }
+  }
+}
 
+//  父进程调用wait想要回收子进程
+uint64 
+proc_wait(uint64 addr){
+  struct proc *p = myproc();
+  struct proc *pp;
+  uint32 have_kid = 0;
+  acquire(&wait_lock);
+
+  for(;;){
+    for(pp = procs;pp < &procs[NPROC];pp++){
+      if(pp->parent == p){
+        //  找到子进程，判断子进程是否可回收
+        acquire(&pp->lock);
+
+        have_kid = 1;
+        if(pp->state == ZOMBIE){
+          //  To be continued
+          //  为什么要检查子进程的退出状态
+          free_proc(pp);
+          release(&pp->lock);
+          release(&wait_lock);
+        }
+      }
+    }
+
+    if(!have_kid && get_killed(p)){
+      release(&wait_lock);
+      return -1;
+    }
+
+    sleep(&wait_lock, p);
+
+  }
+}
+
+
+//  子进程调用exit想要结束进程，
+// 执行释放资源，托孤，唤醒父进程等一系列操作
+void 
+proc_exit(int status){
+  struct proc *p = myproc();
+  if(p == initproc)
+    panic("initproc is exiting\n");
+
+  //  对文件系统进行操作  To be continued
+
+  acquire(&wait_lock);
+
+  reparent(p);  //将进程p的子进程托孤给init
+
+  wakeup(p->parent);
+  acquire(&p->lock);
+
+  release(&wait_lock);
+  p->xstate = status;
+  p->state = ZOMBIE;
+
+  sched();
+  panic("zombie proc is resched()");
+}
+
+
+//  有条件锁为参数，考虑调用sleep的场景
+void 
+sleep(struct spinlock *lk, void *chan){
+  //  获取当前进程
+  struct proc *p = myproc();
+  //  需要先获取进程的锁，再获取条件锁
+  acquire(&p->lock);
+  release(lk);
+
+  p->state = SLEEPING;
+  p->chan = chan;
+  
+  //  准备进行进程调度
+  sched();
+  // 进程wakeup()被唤醒之后从这里继续执行
+
+  p->chan = 0;  
+  acquire(lk);
+  release(&p->lock);
+  
+}
+
+
+//  唤醒睡眠中的进程。注意此处chan的理解
+//  chan并没有什么作用，也不存储内容，单纯算作一个标记
+//  睡眠中的进程标记上chan的会被唤醒
 void 
 wakeup(void *chan){
   struct proc *p;
@@ -278,4 +378,22 @@ wakeup(void *chan){
   }
 }
 
-  
+//  获取进程的killed标识
+int
+get_killed(struct proc *p){
+  int k = 0;
+  acquire(&p->lock);
+  k = p->killed;
+  release(&p->lock);
+  return k;
+}
+
+//  将函数的kiled标识设置为1
+void 
+set_killed(struct proc *p){
+  acquire(&p->lock);
+  p->killed = 1;
+  release(&p->lock);
+}
+
+

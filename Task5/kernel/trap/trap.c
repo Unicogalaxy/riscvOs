@@ -1,11 +1,13 @@
 #include"../../include/types.h"
 #include"../../include/riscv.h"
 #include"../../include/memlayout.h"
+#include"../proc/proc.h"
 #include"../../include/defs.h"
 
 unsigned int ticks;     //用于时钟中断计数
 
 struct spinlock clock_lock;
+extern char uservec[], trampoline[];
 
 int interrupt_count;  //for test_trap.c
 
@@ -13,7 +15,7 @@ void kernelvec();   //定义在kernelvec.c中，用汇编写的
 
 int dev_intr();
 
-void usertrap();
+
 
 void 
 trap_init(){
@@ -23,6 +25,87 @@ trap_init(){
 void trap_init_hart(){
   w_stvec((uint64)kernelvec);
 }
+
+void 
+usertrap(){
+
+  //  SPP位表示进入trap之前的privilege level
+  //  SIE位表示当前是否开启中断
+  //  SPIE表示在trap into S mode之前是否开启中断
+  if(r_sstatus() & SSTATUS_SPP){
+    panic("The trap is not occured in User Mode.\n");
+  }
+  int which_intr = 0;
+
+  struct proc *p = myproc();
+  //  sepc很快会被破坏，需要尽快保存
+  p->trapframe->epc = r_sepc();
+  
+  //  如果在usertrap()的过程中出现trap,那么理应进入kerneltrap()
+  w_stvec((uint64)kernelvec);
+
+  //  scause值为8，表明trap的原因是syscall
+  if(r_scause() == 8){
+
+    if(get_killed(p))
+      proc_exit(-1);
+    
+    //  如果是因为ecall指令的话，那么返回地址必定要跳过ecall才行
+    p->trapframe->epc += 4;
+
+    //  进行syscall()的过程比较漫长，需要将之前等待的interrupts先解决
+    intr_on();
+    //  To be continued
+    // syscall();
+    
+  } else if((which_intr = dev_intr()) != 0){
+    //  interrupts在dev_intr()中解决了
+  } else {
+    printf("Trap from user mode did not recongnized.\n");
+    set_killed(p);
+  }
+
+  if(which_intr == 1)
+    yield();
+
+  pre_return();
+  
+};
+
+//  To be continued
+void 
+pre_return(){
+  struct proc *p = myproc();
+
+  // we're about to switch the destination of traps from
+  // kerneltrap() to usertrap(). because a trap from kernel
+  // code to usertrap would be a disaster, turn off interrupts.
+  intr_off();
+
+  // send syscalls, interrupts, and exceptions to uservec in trampoline.S
+  uint64 trampoline_uservec = TRAMPOLINE + (uservec - trampoline);
+  w_stvec(trampoline_uservec);
+
+  // set up trapframe values that uservec will need when
+  // the process next traps into the kernel.
+  p->trapframe->kernel_satp = r_satp();         // kernel page table
+  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
+  p->trapframe->kernel_trap = (uint64)usertrap;
+  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
+
+  // set up the registers that trampoline.S's sret will use
+  // to get to user space.
+  
+  // set S Previous Privilege mode to User.
+  unsigned long x = r_sstatus();
+  x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
+  x |= SSTATUS_SPIE; // enable interrupts in user mode
+  w_sstatus(x);
+
+  // set S Exception Program Counter to the saved user pc.
+  w_sepc(p->trapframe->epc);
+}
+
 
 /*
   kerneltrap()只处理中断而不处理异常
@@ -52,10 +135,9 @@ void kerneltrap(){
   w_sepc(sepc);
   w_sstatus(sstatus);
 
-
 }
 
-extern int *test_flag;
+extern int *test_flag;  // For debug
 
 //  在dev_intr()函数中识别到是timer_interrupt就调用clock_intr()  
 //  此时获取锁并让ticks增加，并且将睡眠中的进程该唤醒的给唤醒
@@ -71,8 +153,6 @@ clock_intr(){
     w_stimecmp(r_time() + 1000000);
   }
 }
-
-
 
 /*
   判断中断是什么类型的，external interrupt or timer interrupt

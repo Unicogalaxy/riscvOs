@@ -8,6 +8,7 @@
 #define MSTATUS_MPP_S    (1L << 11)
 #define MSTATUS_MPP_U    (0L << 11)
 #define MIE_STIE         (1L << 5)
+#define SSTATUS_SPIE     (1L << 5)    
 
 static inline uint64 r_mstatus(){
   uint64 x = 0;
@@ -118,6 +119,7 @@ static inline uint64 r_stimecmp(){
   return x;
 }
 
+
 //  To be continued -------
 static inline void w_menvcfg(uint64 x){
   asm volatile("csrw menvcfg, %0": :"r" (x));
@@ -225,6 +227,11 @@ w_satp(uint64 x)
   asm volatile("csrw satp, %0" : : "r" (x));
 }
 
+static inline uint64 r_satp(){
+  uint64 x;
+  asm volatile("csrr %0, satp": "=r"(x));
+  return x;
+}
 
 static inline uint64 
 r_tp(){

@@ -57,7 +57,7 @@ void uvm_free(pagetable_t pagetable, uint64 sz);
 //trap.c
 void trap_init();
 void trap_init_hart();
-
+void pre_return();
 
 
 //spinlock.c
@@ -78,8 +78,12 @@ struct proc *myproc();
 void wakeup(void *chan);
 void yield();
 void sched();
-
+int get_killed(struct proc *p);
+void set_killed(struct proc *p);
 void swtch(struct context*, struct context*); //  swtch.S
+void sleep(struct spinlock *lk, void *chan);
+void proc_exit(int status);
+
 
 
 //plic.c
