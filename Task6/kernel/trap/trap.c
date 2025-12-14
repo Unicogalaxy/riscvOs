@@ -16,7 +16,6 @@ void kernelvec();   //定义在kernelvec.c中，用汇编写的
 int dev_intr();
 
 
-
 void 
 trap_init(){
   init_lock(&clock_lock, "time");
@@ -26,7 +25,8 @@ void trap_init_hart(){
   w_stvec((uint64)kernelvec);
 }
 
-void 
+
+uint64
 usertrap(){
 
   //  SPP位表示进入trap之前的privilege level
@@ -55,24 +55,35 @@ usertrap(){
 
     //  进行syscall()的过程比较漫长，需要将之前等待的interrupts先解决
     intr_on();
-    //  To be continued
-    // syscall();
+    syscall();
     
   } else if((which_intr = dev_intr()) != 0){
     //  interrupts在dev_intr()中解决了
+  } else if((r_scause() == 15 || r_scause() == 13) &&
+            vmfault(p->pagetable, r_stval(), (r_scause() == 13)? 1 : 0) != 0) {
+    // page fault on lazily-allocated page
   } else {
     printf("Trap from user mode did not recongnized.\n");
     set_killed(p);
+    printf("pid %d died\n", p->pid);
   }
+
+  if(get_killed(p))
+    proc_exit(-1);
 
   if(which_intr == 1)
     yield();
 
   pre_return();
-  
-};
 
-//  To be continued
+  uint64 satp = MAKE_SATP(p->pagetable);
+
+  // return to trampoline.S; satp value in a0.
+  return satp;
+}
+
+
+
 void 
 pre_return(){
   struct proc *p = myproc();
@@ -143,7 +154,7 @@ extern int *test_flag;  // For debug
 //  此时获取锁并让ticks增加，并且将睡眠中的进程该唤醒的给唤醒
 //  并且设置下一次timer_interrupt的时间
 void 
-clock_intr(){
+timer_intr(){
   if(cpuid() == 0){
     acquire(&clock_lock);
     interrupt_count++;
@@ -166,9 +177,7 @@ int dev_intr(){
   // 最高位 = 1 --> interrupt, 0 --> exception
   if(scause == 0x8000000000000009L){ 
     //从PLIC处获得信息判断是哪一个外设发起中断
-    int irq = plic_claim(0);
-    
-    printf("the value of irq is %d\n", irq);
+    int irq = plic_claim();
     if(irq == VIRTIO0_IRQ){
       virtio_disk_intr();
     } else if(irq == UART0_IRQ){
@@ -176,14 +185,13 @@ int dev_intr(){
     } else{
       printf("dev_intr(): Unexpected interrupt, irq:%d", irq);
     }
-    if(irq){
+    if(irq)
       plic_compelete(irq);
-    }
 
     return 2;
   } else if(scause == 0x8000000000000005L){
     // Supervisor mode timer interrupt
-    clock_intr();
+    timer_intr();
     return 1;
   } else{
     return 0;
