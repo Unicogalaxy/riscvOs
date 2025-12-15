@@ -33,7 +33,7 @@ fd_alloc(struct file *file)
   struct proc *p = myproc();
 
   for(fd = 0; fd < NOFILE; fd++){
-    if(!p->ofile[fd]){
+    if(p->ofile[fd] == 0){
       p->ofile[fd] = file;
       return fd;
     }
@@ -121,6 +121,7 @@ sys_chdir(void)
   char path[MAXPATH];
   struct inode *ip;
   struct proc *p = myproc();
+  struct inode *old;
   
   begin_op();
   if(argstr(0, path, MAXPATH) < 0 || (ip = namei(path)) == 0){
@@ -135,9 +136,11 @@ sys_chdir(void)
     return -1;
   }
   unlock_inode(ip);
-  putback_inode(ip);
   end_op();
+  old = p->cwd;
   p->cwd = ip;
+  if(old)
+    putback_inode(old);
   return 0;
 }
 
@@ -155,74 +158,6 @@ sys_duplicate(void)
   filedup(file);
   return fd;
 }
-
-
-// static struct inode*
-// create(char *path, short type, short major, short minor)
-// {
-//   struct inode *ip, *dp;
-//   char name[DIRSIZ];
-//   int success = 1; // 引入成功标志位
-
-//   if((dp = nameiparent(path, name)) == 0)
-//     return 0;
-
-//   lock_inode(dp);
-
-//   if((ip = lookup_dir(dp, name, 0)) != 0){
-//     unlock_inode(dp);
-//     putback_inode(dp);
-//     lock_inode(ip);
-//     if(type == T_FILE && (ip->file_type == T_FILE || ip->file_type == T_DEVICE))
-//       return ip;
-//     unlock_inode(ip);
-//     putback_inode(ip);
-//     return 0;
-//   }
-
-//   if((ip = alloc_inode(dp->dev, type)) == 0){
-//     unlock_inode(dp);
-//     putback_inode(dp);
-//     return 0;
-//   }
-
-//   lock_inode(ip);
-//   ip->major = major;
-//   ip->minor = minor;
-//   ip->links = 1;
-//   update_inode(ip);
-
-//   // 处理目录特有的 "." 和 ".."
-//   if(type == T_DIR){
-//     if(link_dir(ip, ".", ip->inode_num) < 0 || link_dir(ip, "..", dp->inode_num) < 0)
-//       success = 0;
-//   }
-
-//   // 将新文件/目录链接到父目录
-//   if(success && link_dir(dp, name, ip->inode_num) < 0){
-//     success = 0;
-//   }
-
-//   if(success){
-//     // 所有操作成功
-//     if(type == T_DIR){
-//       dp->links++;  // for ".."
-//       update_inode(dp);
-//     }
-//     unlock_inode(dp);
-//     putback_inode(dp);
-//     return ip;
-//   } else {
-//     // 发生错误，执行清理逻辑 (原 fail 标签后的代码)
-//     ip->links = 0;
-//     update_inode(ip);
-//     unlock_inode(ip);
-//     putback_inode(ip);
-//     unlock_inode(dp);
-//     putback_inode(dp);
-//     return 0;
-//   }
-// }
 
 
 static struct inode*
@@ -289,6 +224,21 @@ create(char *path, short type, short major, short minor)
   unlock_inode(dp);
   putback_inode(dp);
   return 0;
+}
+
+
+static int
+is_dir_empty(struct inode *ip)
+{
+  struct dirent de;
+
+  for(uint off = 2 * sizeof(de); off < ip->size; off += sizeof(de)){
+    if(read_inode(ip, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("isdirempty: read");
+    if(de.inum != 0)
+      return 0;
+  }
+  return 1;
 }
 
 
@@ -394,8 +344,106 @@ sys_open(void)
   }
 
   unlock_inode(ip);
-  putback_inode(ip);
   end_op();
 
   return fd;
+}
+
+
+uint64
+sys_mkdir(void)
+{
+  char path[MAXPATH];
+  struct inode *ip;
+
+  begin_op();
+  if(argstr(0, path, MAXPATH) < 0){
+    end_op();
+    return -1;
+  }
+
+  if((ip = create(path, T_DIR, 0, 0)) == 0){
+    end_op();
+    return -1;
+  }
+
+  unlock_inode(ip);
+  putback_inode(ip);
+  end_op();
+
+  return 0;
+}
+
+
+uint64
+sys_unlink(void)
+{
+  char path[MAXPATH];
+  char name[DIRSIZ];
+  struct inode *dp;
+  struct inode *ip;
+  struct dirent de;
+  uint off;
+
+  begin_op();
+
+  if(argstr(0, path, MAXPATH) < 0){
+    end_op();
+    return -1;
+  }
+
+  if((dp = nameiparent(path, name)) == 0){
+    end_op();
+    return -1;
+  }
+
+  lock_inode(dp);
+
+  if(compare_name(name, ".") == 0 || compare_name(name, "..") == 0){
+    unlock_inode(dp);
+    putback_inode(dp);
+    end_op();
+    return -1;
+  }
+
+  if((ip = lookup_dir(dp, name, &off)) == 0){
+    unlock_inode(dp);
+    putback_inode(dp);
+    end_op();
+    return -1;
+  }
+
+  lock_inode(ip);
+
+  if(ip->links < 1)
+    panic("unlink: nlink < 1");
+
+  if(ip->file_type == T_DIR && !is_dir_empty(ip)){
+    unlock_inode(ip);
+    putback_inode(ip);
+    unlock_inode(dp);
+    putback_inode(dp);
+    end_op();
+    return -1;
+  }
+
+  memset(&de, 0, sizeof(de));
+  if(write_inode(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+    panic("unlink: write");
+
+  if(ip->file_type == T_DIR){
+    dp->links--;
+    update_inode(dp);
+  }
+
+  unlock_inode(dp);
+  putback_inode(dp);
+
+  ip->links--;
+  update_inode(ip);
+  unlock_inode(ip);
+  putback_inode(ip);
+
+  end_op();
+  return 0;
 }

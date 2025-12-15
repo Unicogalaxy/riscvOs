@@ -15,7 +15,13 @@ ULIB = \
 UPROGS=\
 	$U/_init\
 	$U/_shell\
-	$U/_test_syscall\
+	$U/_echo\
+	$U/_ls\
+	$U/_mkdir\
+	$U/_rm\
+	$U/_touch\
+	$U/_test_file\
+	$U/_test_syscall
 
 .PHONY: $(KERN) build 
 

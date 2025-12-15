@@ -82,6 +82,9 @@ extern uint64 sys_chdir(void);
 extern uint64 sys_makenode(void);
 extern uint64 sys_duplicate(void);
 extern uint64 sys_sbrk(void);
+extern uint64 sys_uptime(void);
+extern uint64 sys_mkdir(void);
+extern uint64 sys_unlink(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -97,6 +100,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_makenode]  sys_makenode,
 [SYS_duplicate] sys_duplicate,
 [SYS_sbrk]      sys_sbrk
+,[SYS_uptime]    sys_uptime
+,[SYS_mkdir]    sys_mkdir
+,[SYS_unlink]   sys_unlink
 };
 
 void

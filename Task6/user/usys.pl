@@ -1,3 +1,20 @@
+# system calls
+print "",".globl fork\n";
+print "",".globl exit\n";
+print "",".globl wait\n";
+print "",".globl getpid\n";
+print "",".globl exec\n";
+print "",".globl open\n";
+print "",".globl close\n";
+print "",".globl read\n";
+print "",".globl write\n";
+print "",".globl chdir\n";
+print "",".globl makenode\n";
+print "",".globl duplicate\n";
+print "",".globl sbrk\n";
+print "",".globl uptime\n";
+print "", ".globl mkdir\n";
+print "", ".globl unlink\n";
 #!/usr/bin/perl -w
 
 # Generate usys.S, the stubs for syscalls.
@@ -34,3 +51,6 @@ entry("chdir");
 entry("makenode");
 entry("duplicate");
 entry("sbrk");
+entry("uptime");
+entry("mkdir");
+entry("unlink");

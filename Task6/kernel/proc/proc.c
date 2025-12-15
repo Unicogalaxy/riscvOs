@@ -205,7 +205,7 @@ proc_fork(){
   struct proc *p = myproc();
   struct proc *cp;
 
-  int pid;
+  int pid, i;
 
   if((cp = alloc_proc()) == 0){
     printf("DEBUG: kfork allocproc failed\n"); // 加这行
@@ -228,11 +228,10 @@ proc_fork(){
   cp->trapframe->a0 = 0;
 
   //文件操作 
-  for(int i=0; i<NOFILE; i++){
+  for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
       cp->ofile[i] = filedup(p->ofile[i]);
-    cp->cwd = duplicate_inode(p->cwd);
-  }
+  cp->cwd = duplicate_inode(p->cwd);
 
   safestrcpy(cp->name, p->name, sizeof(p->name));
 

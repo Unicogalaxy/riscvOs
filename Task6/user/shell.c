@@ -47,6 +47,14 @@ struct backcmd {
   struct cmd *cmd;
 };
 
+static void
+trim_trailing_whitespace(char *s)
+{
+  int n = strlen(s);
+  while(n > 0 && (s[n-1] == ' ' || s[n-1] == '\t' || s[n-1] == '\n' || s[n-1] == '\r'))
+    s[--n] = 0;
+}
+
 int fork1(void);  // Fork but panics on failure.
 void panic(char*);
 struct cmd *parsecmd(char*);
@@ -159,18 +167,24 @@ main(void)
     char *cmd = buf;
     while (*cmd == ' ' || *cmd == '\t')
       cmd++;
-    if (*cmd == '\n') // is a blank command
+    trim_trailing_whitespace(cmd);
+    if (*cmd == 0)
       continue;
-    if(cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' '){
-      // Chdir must be called by the parent, not the child.
-      cmd[strlen(cmd)-1] = 0;  // chop \n
-      if(chdir(cmd+3) < 0)
-        fprintf(2, "cannot cd %s\n", cmd+3);
-    } else {
-      if(fork1() == 0)
-        runcmd(parsecmd(cmd));
-      wait(0);
+    if(cmd[0] == 'c' && cmd[1] == 'd' && (cmd[2] == 0 || cmd[2] == ' ' || cmd[2] == '\t')){
+      // cd runs in the shell process.
+      char *path = cmd + 2;
+      while(*path == ' ' || *path == '\t')
+        path++;
+      if(*path == 0){
+        fprintf(2, "Usage: cd directory\n");
+      } else if(chdir(path) < 0){
+        fprintf(2, "cannot cd %s\n", path);
+      }
+      continue;
     }
+    if(fork1() == 0)
+      runcmd(parsecmd(cmd));
+    wait(0);
   }
   exit(0);
 }

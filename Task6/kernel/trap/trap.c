@@ -62,8 +62,20 @@ usertrap(){
   } else if((r_scause() == 15 || r_scause() == 13) &&
             vmfault(p->pagetable, r_stval(), (r_scause() == 13)? 1 : 0) != 0) {
     // page fault on lazily-allocated page
+  } else if(r_scause() == 12 &&
+            vmfault(p->pagetable, r_stval(), 1) != 0) {
+    // instruction page fault: lazily allocate and map the page, then continue
   } else {
-    printf("Trap from user mode did not recongnized.\n");
+    // extra diagnostics to understand why fault couldn't be handled
+    uint64 va = r_stval();
+    pte_t *pte = walk(p->pagetable, PGROUNDDOWN(va), 0);
+    if(pte && (*pte & PTE_V)){
+      printf("Trap not recognized: scause=0x%lx stval=0x%lx epc=0x%lx flags=0x%lx\n",
+             r_scause(), va, p->trapframe->epc, PTE_FLAGS(*pte));
+    } else {
+      printf("Trap not recognized: scause=0x%lx stval=0x%lx epc=0x%lx (pte invalid)\n",
+             r_scause(), va, p->trapframe->epc);
+    }
     set_killed(p);
     printf("pid %d died\n", p->pid);
   }

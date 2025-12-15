@@ -15,9 +15,10 @@ static int loadseg(pte_t *, uint64, struct inode *, uint, uint);
 // map ELF permissions to PTE permission bits.
 int flags2perm(int flags)
 {
-    int perm = 0;
+  // All loadable segments must be readable and user-accessible.
+  int perm = PTE_R | PTE_U;
     if(flags & 0x1)
-      perm = PTE_X;
+      perm |= PTE_X;
     if(flags & 0x2)
       perm |= PTE_W;
     return perm;
@@ -77,6 +78,17 @@ kexec(char *path, char **argv)
     if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
       goto bad;
   }
+  // ensure all mapped user pages are user-accessible (set PTE_U)
+  for(uint64 va = 0; va < sz; va += PGSIZE){
+    pte_t *pte = walk(pagetable, va, 0);
+    if(pte && (*pte & PTE_V)){
+      // mark user bit on any leaf PTE
+      if((*pte & (PTE_R|PTE_W|PTE_X)) != 0){
+        *pte |= PTE_U;
+      }
+    }
+  }
+
   unlock_inode(ip);
   putback_inode(ip);
   end_op();

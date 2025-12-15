@@ -3,6 +3,7 @@
 #include"../proc/proc.h"
 
 
+
 uint64
 sys_exit(){
   int n;
@@ -52,4 +53,17 @@ sys_sbrk(void)
     myproc()->sz += n;
   }
   return address;
+}
+
+extern unsigned int ticks;
+extern struct spinlock clock_lock;
+
+uint64
+sys_uptime(void)
+{
+  unsigned int xticks;
+  acquire(&clock_lock);
+  xticks = ticks;
+  release(&clock_lock);
+  return xticks;
 }

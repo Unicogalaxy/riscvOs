@@ -6,6 +6,8 @@ OBJCOPY = $(PREVIOUS)objcopy
 
 CFLAGS = -Wall -Werror -O -ggdb -MD -fno-omit-frame-pointer
 CFLAGS += -ffreestanding -nostdlib -mno-relax -mcmodel=medany
+# Ensure integer mul/div and atomics available in user/kernel
+CFLAGS += -march=rv64gc -mabi=lp64
 LDFLAGS = -nostdlib
 
 QEMU = qemu-system-riscv64

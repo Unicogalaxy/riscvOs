@@ -158,3 +158,33 @@ sbrk(int n) {
 //   return sys_sbrk(n, SBRK_LAZY);
 // }
 
+
+unsigned int 
+get_time(void) {
+    return uptime();
+}
+
+//辅助函数
+void 
+make_filename(char *buf, const char *prefix, int num) {
+    // 复制前缀
+    char *p = buf;
+    const char *s = prefix;
+    while(*s) *p++ = *s++;
+    
+    // 处理数字部分
+    if (num == 0) {
+        *p++ = '0';
+    } else {
+        // 临时缓冲区存放数字
+        char digits[16];
+        int i = 0;
+        while(num > 0) {
+            digits[i++] = (num % 10) + '0';
+            num /= 10;
+        }
+        // 倒序写入
+        while(i > 0) *p++ = digits[--i];
+    }
+    *p = 0; // 字符串结束符
+}
