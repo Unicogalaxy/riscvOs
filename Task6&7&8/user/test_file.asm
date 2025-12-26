@@ -422,11 +422,8 @@ void test_filesystem_performance() {
  37a:	bb250513          	addi	a0,a0,-1102 # f28 <malloc+0x328>
  37e:	00000097          	auipc	ra,0x0
  382:	7ca080e7          	jalr	1994(ra) # b48 <printf>
-    // }
-    // close(fd);
-    // uint64 large_file_time = get_time() - start_time;
+
     
-    // printf("Large file (1x4MB): %d ticks\n", (unsigned int)large_file_time);
 }
  386:	60e6                	ld	ra,88(sp)
  388:	6446                	ld	s0,80(sp)

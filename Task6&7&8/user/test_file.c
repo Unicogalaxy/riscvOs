@@ -136,29 +136,7 @@ void test_filesystem_performance() {
     
     printf("Files (100x4B): %d ticks\n", (unsigned int)small_files_time);
 
-    // --- 大文件测试 ---
-    // start_time = get_time();
-    // int fd = open("large_file", O_CREATE | O_RDWR);
-    // if(fd < 0){
-    //     printf("Error: cannot create large_file\n");
-    //     exit(1);
-    // }
-    // char large_buffer[4096];
-    // // 初始化一下 buffer，虽然不影响性能测试，但符合规范
-    // memset(large_buffer, 'A', 4096);
-    // 原代码循环体是空的，这里补上 write 操作
-    // 写 1024 次 4KB = 4MB
-    // for (int i = 0; i < 100; i++) { 
-    //     // if(write(fd, large_buffer, 4096) != 4096){
-    //     //     printf("Error: write failed\n");
-    //     //     exit(1);
-    //     // }
-    //     write(fd, large_buffer, sizeof(large_buffer));
-    // }
-    // close(fd);
-    // uint64 large_file_time = get_time() - start_time;
     
-    // printf("Large file (1x4MB): %d ticks\n", (unsigned int)large_file_time);
 }
 
 // 3. 添加 main 函数作为入口
